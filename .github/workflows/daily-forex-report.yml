@@ -33,11 +33,13 @@ jobs:
           # Fixed run settings -> no interactive prompts, safe to hardcode.
           TRADINGAGENTS_LLM_PROVIDER: google
           TRADINGAGENTS_QUICK_THINK_LLM: gemini-3.5-flash-lite
-          # gemini-2.5-flash was retired for new API keys (Google's API itself
-          # returns 404 NOT_FOUND on it now and points to this replacement);
-          # that retirement, not real traffic, was what the "high demand" 503s
-          # further down the retry chain actually came from.
-          TRADINGAGENTS_DEEP_THINK_LLM: gemini-3.8-flash
+          # Not gemini-3.8-flash: its free tier caps at 20 requests/day
+          # project-wide, which one 3-pair run blows through immediately
+          # (confirmed via a 429 RESOURCE_EXHAUSTED quota error, not the
+          # transient 503 overload the retry loop below exists for). The
+          # flash-lite models get 500 free requests/day instead, so the
+          # deep-think slot uses the same model as quick-think.
+          TRADINGAGENTS_DEEP_THINK_LLM: gemini-3.5-flash-lite
           TRADINGAGENTS_OUTPUT_LANGUAGE: English
           TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
           TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
