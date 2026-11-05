@@ -39,17 +39,32 @@ jobs:
           TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
           TRADINGAGENTS_RESULTS_DIR: ${{ github.workspace }}/reports
           TRADINGAGENTS_NO_UPDATE_CHECK: "1"
-          # The free tier is rate-limited; ride out 429s instead of failing the run.
+          # The free tier is rate-limited and sometimes briefly overloaded
+          # (Google returns a 503 "high demand" error); ride both out instead
+          # of failing the run.
           TRADINGAGENTS_LLM_MAX_RETRIES: "10"
         run: |
-          set -e
+          set -uo pipefail
           TODAY=$(date -u +%Y-%m-%d)
           # Edit this list to add/remove pairs.
           for pair in EURUSD GBPUSD USDJPY; do
             echo "=== $pair ==="
-            tradingagents --ticker "$pair" --date "$TODAY" \
-              --analysts news,fundamentals --save --no-show
+            attempt=1
+            until tradingagents --ticker "$pair" --date "$TODAY" \
+                --analysts news,fundamentals --save --no-show; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::warning::$pair failed 3 times in a row (likely Gemini's free tier being overloaded). Skipping it for today."
+                break
+              fi
+              echo "$pair failed (attempt $attempt/3). Waiting 3 minutes before retrying, in case Gemini is just overloaded right now..."
+              sleep 180
+              attempt=$((attempt + 1))
+            done
           done
+
+      - name: Count how many pairs actually produced a report
+        id: check
+        run: echo "count=$(find reports -name complete_report.md 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
 
       - name: Keep the reports for 14 days even if Telegram delivery fails
         uses: actions/upload-artifact@v4
@@ -57,11 +72,21 @@ jobs:
           name: forex-reports
           path: reports/**/complete_report.md
           retention-days: 14
+          if-no-files-found: warn
 
-      - name: Send the report to Telegram
+      - name: Send the report(s) to Telegram
+        if: steps.check.outputs.count != '0'
         uses: appleboy/telegram-action@v1
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: "Forex fundamentals report for EURUSD, GBPUSD, USDJPY — attached below."
+          message: "Forex fundamentals report — attached below. (${{ steps.check.outputs.count }} of 3 pairs completed today.)"
           document: reports/**/complete_report.md
+
+      - name: Tell Telegram if every pair failed
+        if: steps.check.outputs.count == '0'
+        uses: appleboy/telegram-action@v1
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: "Today's forex fundamentals run failed for every pair, most likely Gemini's free tier being overloaded. Check the Actions tab on GitHub for details."
