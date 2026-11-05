@@ -68,15 +68,31 @@ jobs:
             done
           done
 
-      - name: Count how many pairs actually produced a report
+      - name: Collect the reports into one flat folder
         id: check
-        run: echo "count=$(find reports -name complete_report.md 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+        run: |
+          # telegram-action resolves its "document" glob with Go's
+          # filepath.Glob, which (unlike @actions/upload-artifact's glob)
+          # does NOT match "**" recursively across directory levels -- and
+          # our reports sit two levels deep (reports/reports/<ticker>_<ts>/
+          # complete_report.md, since the framework appends its own
+          # "reports" folder under TRADINGAGENTS_RESULTS_DIR). That mismatch
+          # silently sent the Telegram message with no file attached. Copying
+          # into one flat folder sidesteps glob-engine differences entirely.
+          mkdir -p telegram-send
+          count=0
+          for report in $(find reports -name complete_report.md 2>/dev/null); do
+            pair=$(basename "$(dirname "$report")" | cut -d_ -f1)
+            cp "$report" "telegram-send/${pair}.md"
+            count=$((count + 1))
+          done
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
       - name: Keep the reports for 14 days even if Telegram delivery fails
         uses: actions/upload-artifact@v4
         with:
           name: forex-reports
-          path: reports/**/complete_report.md
+          path: telegram-send/*.md
           retention-days: 14
           if-no-files-found: warn
 
@@ -87,7 +103,7 @@ jobs:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: "Forex fundamentals report — attached below. (${{ steps.check.outputs.count }} of 3 pairs completed today.)"
-          document: reports/**/complete_report.md
+          document: telegram-send/*.md
 
       - name: Tell Telegram if every pair failed
         if: steps.check.outputs.count == '0'
