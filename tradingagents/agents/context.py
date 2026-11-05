@@ -124,7 +124,8 @@ def build_instrument_context(
     on the analysis date.
     """
     is_crypto = asset_type == "crypto"
-    instrument_label = "asset" if is_crypto else "instrument"
+    is_forex = asset_type == "forex"
+    instrument_label = "currency pair" if is_forex else "asset" if is_crypto else "instrument"
     context = (
         f"The {instrument_label} to analyze is `{ticker}`. "
         "The tools serve this instrument; refer to it by this exact ticker in every report and recommendation, "
@@ -165,6 +166,13 @@ def build_instrument_context(
         context += (
             " Treat it as a crypto asset rather than a company, and do not "
             "assume company fundamentals are available."
+        )
+    elif is_forex:
+        context += (
+            " Treat it as a spot currency pair, not a company: there is no balance "
+            "sheet, income statement, or insider activity to speak of. Fundamentals "
+            "for this instrument come from each currency's macroeconomic picture "
+            "(central bank policy, inflation, growth, trade balance), not company filings."
         )
     return context
 

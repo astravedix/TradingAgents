@@ -17,7 +17,10 @@ from tradingagents.dataflows.vendors.alpha_vantage import (
     get_news as get_alpha_vantage_news,
     get_stock as get_alpha_vantage_stock,
 )
-from tradingagents.dataflows.vendors.fred import get_macro_data as get_fred_macro_data
+from tradingagents.dataflows.vendors.fred import (
+    get_currency_scorecard as get_fred_currency_scorecard,
+    get_macro_data as get_fred_macro_data,
+)
 from tradingagents.dataflows.vendors.polymarket import (
     get_prediction_markets as get_polymarket_prediction_markets,
 )
@@ -76,6 +79,7 @@ TOOLS_CATEGORIES = {
         "description": "Macroeconomic indicators (rates, inflation, labor, growth)",
         "tools": [
             "get_macro_indicators",
+            "get_currency_scorecard",
         ]
     },
     "prediction_markets": {
@@ -141,6 +145,9 @@ VENDOR_METHODS = {
     # macro_data
     "get_macro_indicators": {
         "fred": get_fred_macro_data,
+    },
+    "get_currency_scorecard": {
+        "fred": get_fred_currency_scorecard,
     },
     # prediction_markets
     "get_prediction_markets": {

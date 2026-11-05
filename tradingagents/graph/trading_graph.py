@@ -57,6 +57,7 @@ class TradingAgentsGraph:
         debug=False,
         config: dict[str, Any] = None,
         callbacks: list | None = None,
+        asset_type: str = "stock",
     ):
         """Initialize the trading agents graph and components.
 
@@ -65,10 +66,17 @@ class TradingAgentsGraph:
             debug: Whether to run in debug mode
             config: Configuration dictionary. If None, uses default config
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
+            asset_type: "stock" (default), "crypto", or "forex". Fixes the graph's
+                shape at build time: under the "fundamentals" key, "forex" wires
+                the Forex Fundamentals Analyst (central bank policy, inflation,
+                growth, trade balance) instead of the equity one. Pass the same
+                value to every propagate()/create_run_state() call on this graph —
+                it is not re-derived from the ticker at run time.
         """
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+        self.asset_type = asset_type
 
         set_config(self.config)
 
@@ -98,6 +106,7 @@ class TradingAgentsGraph:
             self.deep_thinking_llm,
             self.conditional_logic,
             max_tool_rounds,
+            asset_type=self.asset_type,
         )
 
         self.propagator = Propagator(

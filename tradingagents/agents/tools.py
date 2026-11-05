@@ -265,6 +265,44 @@ def get_macro_indicators(
 
 
 @tool
+def get_currency_scorecard(
+    currency: Annotated[
+        str,
+        "ISO-4217 currency code, e.g. 'USD', 'EUR', 'GBP', 'JPY', 'CAD', "
+        "'AUD', 'CHF', 'NZD'.",
+    ],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format; the end of the window"],
+    look_back_days: Annotated[
+        int | None,
+        "Trailing window length in days for every pillar; omit to use each "
+        "pillar's own default (longer for quarterly GDP growth, shorter for "
+        "monthly trade balance).",
+    ] = None,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """
+    Retrieve one currency's full fundamentals picture in a single call: policy
+    rate, headline CPI (YoY), GDP growth, and trade balance, each as a trend
+    over time rather than a single snapshot. Covers USD, EUR, GBP, JPY, CAD,
+    AUD, CHF, NZD. Uses the configured macro_data vendor (FRED).
+
+    Call this once per currency in the pair under analysis (e.g. for EURUSD,
+    once with 'EUR' and once with 'USD') to build a side-by-side comparison.
+    For a currency not covered here, or any single series by its raw FRED ID,
+    use get_macro_indicators instead.
+
+    Args:
+        currency (str): ISO-4217 code
+        curr_date (str): Current date in yyyy-mm-dd format
+        look_back_days (int): Trailing window length for every pillar; omit for pillar defaults
+
+    Returns:
+        str: A formatted markdown report with one section per pillar
+    """
+    return route_to_vendor("get_currency_scorecard", currency, as_of(curr_date, trade_date), look_back_days)
+
+
+@tool
 def get_prediction_markets(
     topic: Annotated[
         str,

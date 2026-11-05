@@ -11,7 +11,7 @@ from rich.markup import escape
 
 from cli.display import console
 from cli.models import AnalystType, AssetType
-from tradingagents.dataflows.symbols import safe_ticker_component
+from tradingagents.dataflows.symbols import forex_pair_currencies, safe_ticker_component
 from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.llm_clients.model_catalog import get_model_options
 from tradingagents.llm_clients.openai_client import OPENAI_COMPATIBLE_PROVIDERS, SIGNED_IN_PROVIDERS
@@ -134,10 +134,19 @@ def normalize_ticker_symbol(ticker: str) -> str:
 
 def detect_asset_type(ticker: str) -> AssetType:
     """Classify on the canonical symbol so e.g. BTCUSD and BTC-USDT both read as
-    crypto (#981/#982), matching what the data path will actually fetch."""
+    crypto (#981/#982), matching what the data path will actually fetch.
+
+    A spot forex pair (``EURUSD`` -> ``EURUSD=X``) reads as forex rather than
+    stock so it gets the Forex Fundamentals Analyst (central bank policy,
+    inflation, growth, trade balance per currency) instead of the equity one
+    (balance sheet, income statement, SEC filings), which has nothing to say
+    about a currency pair.
+    """
     canonical = normalize_ticker_symbol(ticker)
     if canonical.endswith(CRYPTO_SUFFIXES):
         return AssetType.CRYPTO
+    if forex_pair_currencies(canonical) is not None:
+        return AssetType.FOREX
     return AssetType.STOCK
 
 

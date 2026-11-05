@@ -117,7 +117,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
     # Normalize analyst selection to predefined order (selection is a 'set', order is fixed)
     selected_set = {analyst.value for analyst in selections["analysts"]}
     selected_analyst_keys = [a for a in ANALYST_ORDER if a in selected_set]
-    analyst_execution_plan = build_analyst_execution_plan(selected_analyst_keys)
+    analyst_execution_plan = build_analyst_execution_plan(selected_analyst_keys, selections["asset_type"])
     analyst_wall_time_tracker = AnalystWallTimeTracker(analyst_execution_plan)
 
     graph = TradingAgentsGraph(
@@ -125,6 +125,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         config=config,
         debug=True,
         callbacks=[stats_handler],
+        asset_type=selections["asset_type"],
     )
 
     message_buffer.init_for_analysis(selected_analyst_keys)

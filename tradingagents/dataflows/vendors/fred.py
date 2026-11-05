@@ -60,7 +60,11 @@ MACRO_SERIES = {
     # Growth & output
     "real_gdp": "GDPC1",
     "gdp": "GDP",
+    "us_gdp_growth": "A191RL1Q225SBEA",
     "industrial_production": "INDPRO",
+    # Trade balance
+    "us_trade_balance": "BOPGSTB",
+    "trade_balance": "BOPGSTB",
     # Labor
     "unemployment_rate": "UNRATE",
     "unemployment": "UNRATE",
@@ -84,9 +88,108 @@ MACRO_SERIES = {
     "euro_hicp": "CP0000EZ19M086NEST",
     "euro_core_hicp": "00XEFDEZ19M086NEST",
     "euro_real_gdp": "CLVMNACSCAB1GQEA19",
+    "euro_gdp_growth": "NAEXKP01EZQ657S",
+    "euro_trade_balance": "XTNTVA01EZM664S",
     "germany_10y": "IRLTLT01DEM156N",
     "france_10y": "IRLTLT01FRM156N",
     "eur_usd": "DEXUSEU",
+
+    # Other G10 currencies' central bank policy rate, headline CPI (YoY),
+    # GDP growth (QoQ, seasonally adjusted) and trade balance (national
+    # currency, seasonally adjusted). AUD/CHF/NZD policy rates use the
+    # overnight interbank rate as a close proxy for the official cash/policy
+    # rate: FRED carries no separate central-bank-rate series for those three.
+    # GBP
+    "gbp_policy_rate": "BOERUKM",
+    "boe_bank_rate": "BOERUKM",
+    "gbp_cpi": "CPALTT01GBM659N",
+    "gbp_gdp_growth": "NAEXKP01GBQ657S",
+    "gbp_trade_balance": "XTNTVA01GBM664S",
+    # JPY
+    "jpy_policy_rate": "IRSTCB01JPM156N",
+    "boj_rate": "IRSTCB01JPM156N",
+    "jpy_cpi": "CPALTT01JPM659N",
+    "jpy_gdp_growth": "NAEXKP01JPQ657S",
+    "jpy_trade_balance": "XTNTVA01JPM664S",
+    # CAD
+    "cad_policy_rate": "IRSTCB01CAM156N",
+    "boc_rate": "IRSTCB01CAM156N",
+    "cad_cpi": "CPALTT01CAM659N",
+    "cad_gdp_growth": "NAEXKP01CAQ657S",
+    "cad_trade_balance": "XTNTVA01CAM664S",
+    # AUD
+    "aud_policy_rate": "IRSTCI01AUM156N",  # interbank proxy; no distinct RBA series on FRED
+    "rba_cash_rate": "IRSTCI01AUM156N",
+    "aud_cpi": "CPALTT01AUQ659N",
+    "aud_gdp_growth": "NAEXKP01AUQ657S",
+    "aud_trade_balance": "XTNTVA01AUM664S",
+    # CHF
+    "chf_policy_rate": "IRSTCI01CHM156N",  # interbank proxy; no distinct SNB series on FRED
+    "snb_rate": "IRSTCI01CHM156N",
+    "chf_cpi": "CPALTT01CHM659N",
+    "chf_gdp_growth": "NAEXKP01CHQ657S",
+    "chf_trade_balance": "XTNTVA01CHM664S",
+    # NZD
+    "nzd_policy_rate": "IRSTCI01NZM156N",  # interbank proxy; no distinct RBNZ series on FRED
+    "rbnz_rate": "IRSTCI01NZM156N",
+    "nzd_cpi": "CPALTT01NZQ659N",
+    "nzd_gdp_growth": "NAEXKP01NZQ657S",
+    "nzd_trade_balance": "XTNTVA01NZM664S",
+}
+
+# The four fundamentals pillars per currency, as aliases above. Keyed by
+# ISO-4217 code. Used by get_currency_scorecard to pull one currency's full
+# picture in a single call instead of the analyst making four separate
+# get_macro_indicators calls per currency (eight for a pair).
+CURRENCY_PILLARS: dict[str, dict[str, str]] = {
+    "USD": {
+        "policy_rate": "fed_funds_rate",
+        "cpi": "cpi",
+        "gdp_growth": "us_gdp_growth",
+        "trade_balance": "us_trade_balance",
+    },
+    "EUR": {
+        "policy_rate": "ecb_deposit_rate",
+        "cpi": "euro_hicp",
+        "gdp_growth": "euro_gdp_growth",
+        "trade_balance": "euro_trade_balance",
+    },
+    "GBP": {
+        "policy_rate": "gbp_policy_rate",
+        "cpi": "gbp_cpi",
+        "gdp_growth": "gbp_gdp_growth",
+        "trade_balance": "gbp_trade_balance",
+    },
+    "JPY": {
+        "policy_rate": "jpy_policy_rate",
+        "cpi": "jpy_cpi",
+        "gdp_growth": "jpy_gdp_growth",
+        "trade_balance": "jpy_trade_balance",
+    },
+    "CAD": {
+        "policy_rate": "cad_policy_rate",
+        "cpi": "cad_cpi",
+        "gdp_growth": "cad_gdp_growth",
+        "trade_balance": "cad_trade_balance",
+    },
+    "AUD": {
+        "policy_rate": "aud_policy_rate",
+        "cpi": "aud_cpi",
+        "gdp_growth": "aud_gdp_growth",
+        "trade_balance": "aud_trade_balance",
+    },
+    "CHF": {
+        "policy_rate": "chf_policy_rate",
+        "cpi": "chf_cpi",
+        "gdp_growth": "chf_gdp_growth",
+        "trade_balance": "chf_trade_balance",
+    },
+    "NZD": {
+        "policy_rate": "nzd_policy_rate",
+        "cpi": "nzd_cpi",
+        "gdp_growth": "nzd_gdp_growth",
+        "trade_balance": "nzd_trade_balance",
+    },
 }
 
 
@@ -284,3 +387,62 @@ def get_macro_data(
     )
 
     return header + summary + note + table
+
+
+# A currency's full fundamentals picture is a trailing window, not a single
+# snapshot value: the analyst needs to see whether the policy rate, inflation
+# and growth are rising or falling, not just where they stand today. Each
+# pillar below gets this many days of history so a hike/cut cycle or an
+# inflation trend is visible, while trade balance (monthly, noisier) gets a
+# shorter window so the table stays readable.
+_SCORECARD_LOOKBACK = {
+    "policy_rate": 450,  # ~15 months: spans a full meeting cycle
+    "cpi": 450,
+    "gdp_growth": 730,  # quarterly series: 2 years to show several prints
+    "trade_balance": 270,  # monthly: ~9 prints
+}
+
+_PILLAR_LABELS = {
+    "policy_rate": "Policy rate",
+    "cpi": "Inflation (CPI, YoY)",
+    "gdp_growth": "GDP growth",
+    "trade_balance": "Trade balance",
+}
+
+
+def get_currency_scorecard(currency: str, as_of_date: str, look_back_days: int | None = None) -> str:
+    """Fetch a currency's full fundamentals picture in one call: policy rate,
+    headline CPI, GDP growth, and trade balance, each as a trend over time.
+
+    This exists so the Forex Fundamentals Analyst can score a currency without
+    four separate get_macro_indicators calls (eight for a pair) burning its
+    tool-call budget. Each pillar still pins to the FRED vintage as of
+    ``as_of_date`` via get_macro_data, so point-in-time integrity is unchanged.
+
+    Args:
+        currency: ISO-4217 code (e.g. "USD", "EUR", "GBP"). Case-insensitive.
+        as_of_date: The as-of date (yyyy-mm-dd); see get_macro_data.
+        look_back_days: Overrides every pillar's window when given; omit to use
+            each pillar's own default (longer for quarterly growth, shorter
+            for monthly trade balance) so the trend is visible without an
+            oversized table.
+
+    Returns:
+        A markdown report with one section per pillar, or a message naming
+        which currencies this vendor covers if the code isn't recognized.
+    """
+    code = currency.strip().upper()
+    pillars = CURRENCY_PILLARS.get(code)
+    if pillars is None:
+        covered = ", ".join(sorted(CURRENCY_PILLARS))
+        return (
+            f"No curated fundamentals pillars for currency '{currency}'. "
+            f"get_currency_scorecard covers: {covered}. For any other "
+            f"currency, use get_macro_indicators with a raw FRED series ID instead."
+        )
+
+    sections = [f"# Currency Fundamentals Scorecard: {code}\n"]
+    for pillar, alias in pillars.items():
+        window = look_back_days if look_back_days is not None else _SCORECARD_LOOKBACK[pillar]
+        sections.append(f"### {_PILLAR_LABELS[pillar]}\n" + get_macro_data(alias, as_of_date, window))
+    return "\n".join(sections)

@@ -100,6 +100,23 @@ def _normalize_crypto(s: str) -> str | None:
     return f"{base}-USD" if base else None
 
 
+def forex_pair_currencies(raw: str) -> tuple[str, str] | None:
+    """Return ``(base, quote)`` ISO-4217 codes if ``raw`` names a spot forex
+    pair, else ``None``. Accepts any form the pipeline may hold for a pair —
+    broker style (``EURUSD``, ``EURUSD+``) or Yahoo's own (``EURUSD=X``) —
+    so callers don't need to normalize first. Purely syntactic, like
+    :func:`crypto_base`.
+    """
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip().upper().rstrip("+")
+    if s.endswith("=X"):
+        s = s[:-2]
+    if len(s) == 6 and s[:3] in _FOREX_CURRENCIES and s[3:] in _FOREX_CURRENCIES:
+        return s[:3], s[3:]
+    return None
+
+
 def normalize_symbol(raw: str) -> str:
     """Map a user/broker symbol to its canonical Yahoo Finance symbol.
 
