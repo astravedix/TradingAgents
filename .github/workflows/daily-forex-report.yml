@@ -1,0 +1,72 @@
+name: Daily Forex Fundamentals Report
+
+# Runs on GitHub's free Actions runners (no server to pay for or maintain),
+# weekday mornings, and emails the report. You can also run it on demand from
+# the "Actions" tab in GitHub -> this workflow -> "Run workflow".
+on:
+  schedule:
+    # 12:00 UTC = 7am US Eastern during EST, 8am during EDT (no DST awareness
+    # in cron; shift this by 1 hour yourself around the March/November clock
+    # changes if you want it pinned to exactly 7am year-round).
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install TradingAgents
+        run: pip install .
+
+      - name: Run the forex fundamentals analysis
+        env:
+          # Secrets: set these under Settings -> Secrets and variables ->
+          # Actions in your fork. None of them are committed to the repo.
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # Fixed run settings -> no interactive prompts, safe to hardcode.
+          TRADINGAGENTS_LLM_PROVIDER: google
+          TRADINGAGENTS_QUICK_THINK_LLM: gemini-3.5-flash-lite
+          TRADINGAGENTS_DEEP_THINK_LLM: gemini-2.5-flash
+          TRADINGAGENTS_OUTPUT_LANGUAGE: English
+          TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
+          TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
+          TRADINGAGENTS_RESULTS_DIR: ${{ github.workspace }}/reports
+          TRADINGAGENTS_NO_UPDATE_CHECK: "1"
+          # The free tier is rate-limited; ride out 429s instead of failing the run.
+          TRADINGAGENTS_LLM_MAX_RETRIES: "10"
+        run: |
+          set -e
+          TODAY=$(date -u +%Y-%m-%d)
+          # Edit this list to add/remove pairs.
+          for pair in EURUSD GBPUSD USDJPY; do
+            echo "=== $pair ==="
+            tradingagents --ticker "$pair" --date "$TODAY" \
+              --analysts news,fundamentals --save --no-show
+          done
+
+      - name: Keep the reports for 14 days even if email fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: forex-reports
+          path: reports/**/complete_report.html
+          retention-days: 14
+
+      - name: Email the report
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_APP_PASSWORD }}
+          subject: "Forex fundamentals report — ${{ github.run_id }}"
+          to: ${{ secrets.EMAIL_USERNAME }}
+          from: TradingAgents
+          body: "Attached: today's forex fundamentals reports for EURUSD, GBPUSD, USDJPY."
+          attachments: reports/**/complete_report.html
