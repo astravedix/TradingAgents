@@ -52,12 +52,34 @@ jobs:
         run: |
           set -uo pipefail
           TODAY=$(date -u +%Y-%m-%d)
-          # Edit this list to add/remove pairs.
-          for pair in EURUSD GBPUSD USDJPY; do
+          # Edit this list to add/remove pairs. 26 pairs x ~15-20 Gemini
+          # calls each sits right up against the free tier's 500
+          # requests/day ceiling (shared across the whole run, not
+          # per-pair) -- comfortable on a good day, tight if Google is
+          # also fielding retries. The quota_exhausted flag below means a
+          # single hard RESOURCE_EXHAUSTED stops burning further retries
+          # on every remaining pair once the day's budget is gone, rather
+          # than grinding through 3 doomed attempts (with 3-minute waits
+          # between them) for each one.
+          PAIRS="EURUSD GBPUSD USDJPY USDCHF USDCAD AUDUSD NZDUSD EURGBP EURJPY EURCHF EURCAD EURAUD EURNZD GBPJPY GBPCHF GBPCAD GBPAUD GBPNZD AUDJPY AUDCAD AUDCHF AUDNZD CADJPY CADCHF NZDJPY CHFJPY"
+          TOTAL=$(echo $PAIRS | wc -w)
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          quota_exhausted=0
+          for pair in $PAIRS; do
+            if [ "$quota_exhausted" -eq 1 ]; then
+              echo "::warning::Skipping $pair -- Gemini's free-tier daily quota (500 requests) is already exhausted for today."
+              continue
+            fi
             echo "=== $pair ==="
             attempt=1
+            output_log=$(mktemp)
             until tradingagents --ticker "$pair" --date "$TODAY" \
-                --analysts news,fundamentals --save --no-show; do
+                --analysts news,fundamentals --save --no-show 2>&1 | tee "$output_log"; do
+              if grep -q "RESOURCE_EXHAUSTED" "$output_log"; then
+                echo "::warning::Gemini's free-tier daily quota (500 requests) is exhausted. Skipping every remaining pair for today instead of retrying a budget that won't come back until Google resets it."
+                quota_exhausted=1
+                break
+              fi
               if [ "$attempt" -ge 3 ]; then
                 echo "::warning::$pair failed 3 times in a row (likely Gemini's free tier being overloaded). Skipping it for today."
                 break
@@ -66,7 +88,9 @@ jobs:
               sleep 180
               attempt=$((attempt + 1))
             done
+            rm -f "$output_log"
           done
+        id: run
 
       - name: Collect the reports into one flat folder
         id: check
@@ -102,7 +126,7 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: "Forex fundamentals report — attached below. (${{ steps.check.outputs.count }} of 3 pairs completed today.)"
+          message: "Forex fundamentals report — attached below. (${{ steps.check.outputs.count }} of ${{ steps.run.outputs.total }} pairs completed today.)"
           document: telegram-send/*.md
 
       - name: Tell Telegram if every pair failed
