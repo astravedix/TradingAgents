@@ -52,7 +52,7 @@ jobs:
         run: |
           set -uo pipefail
           TODAY=$(date -u +%Y-%m-%d)
-          # Edit this list to add/remove pairs. 26 pairs x ~15-20 Gemini
+          # Edit this list to add/remove pairs. 28 pairs x ~15-20 Gemini
           # calls each sits right up against the free tier's 500
           # requests/day ceiling (shared across the whole run, not
           # per-pair) -- comfortable on a good day, tight if Google is
@@ -61,7 +61,10 @@ jobs:
           # on every remaining pair once the day's budget is gone, rather
           # than grinding through 3 doomed attempts (with 3-minute waits
           # between them) for each one.
-          PAIRS="EURUSD GBPUSD USDJPY USDCHF USDCAD AUDUSD NZDUSD EURGBP EURJPY EURCHF EURCAD EURAUD EURNZD GBPJPY GBPCHF GBPCAD GBPAUD GBPNZD AUDJPY AUDCAD AUDCHF AUDNZD CADJPY CADCHF NZDJPY CHFJPY"
+          # All 28 pairs from the 8 majors (USD, EUR, GBP, JPY, CHF, AUD,
+          # CAD, NZD): NZDCHF and NZDCAD were the two missing from the
+          # earlier 26-pair list.
+          PAIRS="EURUSD GBPUSD USDJPY USDCHF USDCAD AUDUSD NZDUSD EURGBP EURJPY EURCHF EURCAD EURAUD EURNZD GBPJPY GBPCHF GBPCAD GBPAUD GBPNZD AUDJPY AUDCAD AUDCHF AUDNZD CADJPY CADCHF NZDJPY CHFJPY NZDCHF NZDCAD"
           TOTAL=$(echo $PAIRS | wc -w)
           echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
           quota_exhausted=0
@@ -112,7 +115,7 @@ jobs:
           done
           echo "count=$count" >> "$GITHUB_OUTPUT"
 
-      - name: Keep the reports for 14 days even if Telegram delivery fails
+      - name: Keep the full reports for 14 days (stats are saved here, not sent to Telegram)
         uses: actions/upload-artifact@v4
         with:
           name: forex-reports
@@ -120,14 +123,41 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      - name: Send the report(s) to Telegram
+      - name: Build the Green/Red/Yellow Telegram summary
+        if: steps.check.outputs.count != '0'
+        id: summary
+        run: |
+          # Pull just the "Rating" line out of each saved report (e.g.
+          # "- Rating: Overweight") and map it to a color so Telegram gets
+          # a one-line-per-pair scoreboard instead of a pile of .md files.
+          # The full reports with every stat are still kept above as a
+          # 14-day GitHub Actions artifact -- nothing is lost, it's just
+          # not what gets pushed to the phone.
+          text="Forex fundamentals -- ${{ steps.check.outputs.count }}/${{ steps.run.outputs.total }} pairs ($(date -u +%Y-%m-%d))"$'\n'
+          for f in $(ls telegram-send/*.md | sort); do
+            pair=$(basename "$f" .md)
+            rating=$(grep -m1 "^- Rating:" "$f" | sed 's/^- Rating: *//')
+            case "$rating" in
+              Overweight) emoji="🟢" ;;
+              Underweight) emoji="🔴" ;;
+              Hold) emoji="🟡" ;;
+              *) emoji="⚪"; rating="${rating:-unknown}" ;;
+            esac
+            text+=$'\n'"${emoji} ${pair}: ${rating}"
+          done
+          {
+            echo "text<<SUMMARY_EOF"
+            echo "$text"
+            echo "SUMMARY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send the Green/Red/Yellow summary to Telegram
         if: steps.check.outputs.count != '0'
         uses: appleboy/telegram-action@v1
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: "Forex fundamentals report — attached below. (${{ steps.check.outputs.count }} of ${{ steps.run.outputs.total }} pairs completed today.)"
-          document: telegram-send/*.md
+          message: ${{ steps.summary.outputs.text }}
 
       - name: Tell Telegram if every pair failed
         if: steps.check.outputs.count == '0'
