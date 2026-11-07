@@ -30,6 +30,8 @@ jobs:
           # Actions in your fork. None of them are committed to the repo.
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           # Fixed run settings -> no interactive prompts, safe to hardcode.
           TRADINGAGENTS_LLM_PROVIDER: google
           TRADINGAGENTS_QUICK_THINK_LLM: gemini-3.5-flash-lite
@@ -37,9 +39,16 @@ jobs:
           # project-wide, which one 3-pair run blows through immediately
           # (confirmed via a 429 RESOURCE_EXHAUSTED quota error, not the
           # transient 503 overload the retry loop below exists for). The
-          # flash-lite models get 500 free requests/day instead, so the
-          # deep-think slot uses the same model as quick-think.
-          TRADINGAGENTS_DEEP_THINK_LLM: gemini-3.5-flash-lite
+          # flash-lite model stays on the quick-think (analyst/scanning) tier.
+          #
+          # The deep tier (Research Manager, Portfolio Manager -- the agents
+          # that actually commit to a rating) is pinned to Claude instead of
+          # following the free Gemini tier above: this is a real, metered
+          # Anthropic call per pair (28/day with the full PAIRS list below),
+          # not a free-tier one, so it costs money. Remove these two lines to
+          # go back to deep-think following TRADINGAGENTS_LLM_PROVIDER (free).
+          TRADINGAGENTS_DEEP_THINK_PROVIDER: anthropic
+          TRADINGAGENTS_DEEP_THINK_LLM: claude-sonnet-5
           TRADINGAGENTS_OUTPUT_LANGUAGE: English
           TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
           TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
