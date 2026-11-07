@@ -101,6 +101,14 @@ def build_default_config() -> dict:
         # A tier may name its own provider and endpoint (#1440): the quick tier serves
         # the analysts, researchers, debaters and trader, the deep tier the managers.
         # None means the tier uses llm_provider and backend_url.
+        #
+        # Deliberately left None here rather than hardcoded to "anthropic": the CLI's
+        # interactive model picker (cli/prompts.select_deep_thinking_agent) only ever
+        # offers the *main* provider's models, so a tier pinned to a different
+        # provider must get its own model from TRADINGAGENTS_DEEP_THINK_PROVIDER /
+        # TRADINGAGENTS_DEEP_THINK_LLM (see .env.example) rather than from a baked-in
+        # default here — otherwise an interactive run with no env vars set would pick
+        # a same-provider model that mismatches this field's pinned provider.
         "quick_think_provider": None,
         "deep_think_provider": None,
         "quick_think_backend_url": None,

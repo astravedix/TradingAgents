@@ -15,6 +15,7 @@ from tradingagents.agents.context import (
     get_language_instruction,
     get_portfolio_context_from_state,
 )
+from tradingagents.agents.probability_calibration import jev_calibrate, render_calibration
 from tradingagents.agents.rating import parse_rating
 from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
 from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
@@ -81,9 +82,19 @@ Write these sections, in this order, starting with the rating on its own line:
         if decision is not None:
             final_trade_decision = render_pm_decision(decision)
             final_rating = decision.rating.value
+            thesis = decision.investment_thesis
         else:
             final_trade_decision = llm.invoke(prompt).content
             final_rating = parse_rating(final_trade_decision)
+            thesis = final_trade_decision
+
+        # Independent, non-generative probability check (see
+        # probability_calibration.py): additive only, never a second vote.
+        # A missing TYPESAFE_API_KEY, or any failure, is silent here — the
+        # decision stands on Claude's own call either way.
+        calibration = jev_calibrate(thesis, final_rating)
+        if calibration is not None:
+            final_trade_decision = f"{final_trade_decision}\n\n{render_calibration(calibration)}"
 
         new_risk_debate_state = {
             "history": risk_debate_state["history"],

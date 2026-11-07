@@ -839,6 +839,76 @@ class TestPortfolioManagerInjection:
         result = pm_node(_make_pm_state())
         assert result["final_trade_decision"] == plain_response
 
+    # Jev probability calibration (additive, non-overriding)
+
+    def test_jev_calibration_is_appended_when_available(self, monkeypatch):
+        """When TYPESAFE_API_KEY makes jev_calibrate return an answer, its
+        rendered block is appended after Claude's own decision text — never
+        replacing it (#jev)."""
+        import tradingagents.agents.managers.portfolio_manager as pm_module
+
+        decision = PortfolioDecision(
+            rating=PortfolioRating.OVERWEIGHT,
+            executive_summary="Build position gradually.",
+            investment_thesis="AI capex cycle remains intact.",
+        )
+        captured = {}
+        llm = _structured_pm_llm(captured, decision)
+        seen = {}
+
+        def fake_calibrate(thesis, stated_rating):
+            seen["thesis"] = thesis
+            seen["stated_rating"] = stated_rating
+            return {"choice": "Overweight", "confidence": 0.7,
+                    "probabilities": {"Overweight": 0.7, "Buy": 0.2, "Hold": 0.1}}
+
+        monkeypatch.setattr(pm_module, "jev_calibrate", fake_calibrate)
+
+        pm_node = create_portfolio_manager(llm)
+        result = pm_node(_make_pm_state())
+
+        assert seen == {"thesis": "AI capex cycle remains intact.", "stated_rating": "Overweight"}
+        assert "**Investment Thesis**: AI capex cycle remains intact." in result["final_trade_decision"]
+        assert "Jev Probability Calibration" in result["final_trade_decision"]
+        assert result["final_rating"] == "Overweight"  # Jev never overrides the rating
+
+    def test_no_typesafe_key_leaves_decision_unchanged(self, monkeypatch):
+        """Without a key, jev_calibrate's real implementation returns None and
+        the decision text is exactly what Claude produced — no empty block,
+        no placeholder."""
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        decision = PortfolioDecision(
+            rating=PortfolioRating.SELL,
+            executive_summary="Exit the position.",
+            investment_thesis="Guidance cut below consensus.",
+        )
+        captured = {}
+        llm = _structured_pm_llm(captured, decision)
+        pm_node = create_portfolio_manager(llm)
+        result = pm_node(_make_pm_state())
+
+        assert "Jev" not in result["final_trade_decision"]
+
+    def test_jev_calibration_runs_on_the_freetext_fallback_too(self, monkeypatch):
+        """The free-text fallback path has no structured investment_thesis
+        field, so calibration is asked against the full decision text."""
+        import tradingagents.agents.managers.portfolio_manager as pm_module
+
+        plain_response = "**Rating**: Hold\n\nMixed signals, no edge either way."
+        llm = MagicMock()
+        llm.with_structured_output.side_effect = NotImplementedError("provider unsupported")
+        llm.invoke.return_value = MagicMock(content=plain_response)
+        seen = {}
+        monkeypatch.setattr(
+            pm_module, "jev_calibrate",
+            lambda thesis, stated_rating: seen.update(thesis=thesis, stated_rating=stated_rating) or None,
+        )
+
+        pm_node = create_portfolio_manager(llm)
+        pm_node(_make_pm_state())
+
+        assert seen == {"thesis": plain_response, "stated_rating": "Hold"}
+
     # get_past_context ordering and limits
 
     def test_same_ticker_prioritised(self, tmp_path):
